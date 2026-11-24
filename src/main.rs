@@ -7,6 +7,7 @@ use teloxide::{prelude::*, update_listeners::webhooks, utils::command::BotComman
 use tracing::{error, info};
 use url::Url;
 
+mod reminders;
 mod telemetry;
 
 async fn dispatch<C, CF, M, MF>(text: Option<&str>, username: &str, command: C, message: M)
@@ -40,6 +41,15 @@ async fn main() {
         .await
         .expect("Could not set up webhook");
     info!("Running on {url} {addr}");
+    if let Ok(chat) = env::var("REMINDERS_CHAT_ID")
+        && !chat.is_empty()
+    {
+        let chat = ChatId(
+            chat.parse()
+                .expect("REMINDERS_CHAT_ID must be a numeric Telegram chat ID"),
+        );
+        tokio::spawn(reminders::run(bot.clone(), chat));
+    }
 
     teloxide::repl_with_listener(
         bot,
