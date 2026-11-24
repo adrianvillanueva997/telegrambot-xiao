@@ -17,6 +17,8 @@ cargo run --release
 
 The bot must be able to receive ordinary group messages and documents for Deficiente's features; configure Telegram's bot privacy settings and group permissions accordingly. Do not run another webhook or polling consumer using the same token.
 
+Media downloads are limited to 20 MB and must use a public HTTP(S) address. Redirect destinations are checked against the same restriction, with at most five redirects. FFmpeg conversions have a timeout and output size limit.
+
 ## Development
 
 Install the pinned tools with `mise install`, then run `prek install` to enable the checks before commits. Run `prek run --all-files` manually at any time.

@@ -2288,12 +2288,14 @@ name = "telegrambot-xiao"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "futures-util",
  "rand 0.10.4",
  "regex",
  "reqwest 0.13.5",
  "rust-embed",
  "serde",
  "teloxide",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

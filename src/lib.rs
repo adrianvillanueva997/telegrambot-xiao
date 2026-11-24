@@ -1,12 +1,14 @@
 #![warn(clippy::pedantic)]
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use futures_util::StreamExt;
+use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 
 use crate::error::BotError;
 use message_checks::friday::fetch_friday_video;
 use message_checks::{bad_words, webm};
-use online_downloads::url_checker::{check_url_status_code, is_mp4_url, is_webm_url};
-use online_downloads::video_downloader::{delete_file, download_video};
+use online_downloads::url_checker::{is_mp4_url, is_webm_url};
+use online_downloads::video_downloader::{DOWNLOAD_TIMEOUT, checked_size, download_video};
 use prank::day_check::is_prank_day;
 use prank::randomizer::should_trigger;
 use prank::reverse_words::upside_down_string;
@@ -17,7 +19,6 @@ use teloxide::net::Download;
 use teloxide::payloads::{SendMessageSetters, SendPhotoSetters, SendVideoSetters};
 use teloxide::requests::Requester;
 use teloxide::types::{Document, Message, ReplyParameters};
-use tokio::fs;
 use tokio::time::sleep;
 use tracing::instrument;
 
@@ -30,68 +31,49 @@ mod social_media_handler;
 mod utils;
 
 pub const PRANK_THRESHOLD: u32 = 10;
+static MEDIA_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 
-fn unique_filename(ext: &str) -> String {
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{ts}.{ext}")
-}
+type ProcessingResult = Result<(), Box<dyn Error + Send + Sync>>;
 
 #[instrument]
-async fn process_webm_urls(bot: &Bot, msg: &Message, url: &str) {
-    match check_url_status_code(url).await {
-        Some(status) if (200..=299).contains(&status) => {
-            let webm_filename = unique_filename("webm");
-            let mp4_filename = unique_filename("mp4");
-            bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::UploadVideo)
-                .await
-                .unwrap();
-            download_video(url, &webm_filename).await;
-            webm::convert_webm_to_mp4(&webm_filename, &mp4_filename).await;
-            bot.send_video(
-                msg.chat.id,
-                teloxide::types::InputFile::file(std::path::Path::new(&mp4_filename)),
-            )
+async fn process_video_url(bot: &Bot, msg: &Message, url: &str, convert: bool) -> ProcessingResult {
+    let _permit = MEDIA_SLOTS.acquire().await?;
+    let dir = tempfile::tempdir()?;
+    let input = dir
+        .path()
+        .join(if convert { "input.webm" } else { "input.mp4" });
+    let output = dir.path().join("output.mp4");
+    bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::UploadVideo)
+        .await?;
+    if let Err(err) = download_video(url, &input).await {
+        tracing::warn!(%err, "video download failed");
+        bot.send_message(msg.chat.id, "El video no existe o no está disponible 😭")
             .reply_parameters(ReplyParameters::new(msg.id))
-            .await
-            .unwrap();
-        }
-        _ => {
-            bot.send_message(msg.chat.id, "El video no existe o no está disponible 😭")
-                .reply_parameters(ReplyParameters::new(msg.id))
-                .await
-                .unwrap();
-        }
+            .await?;
+        return Ok(());
     }
+    let video = if convert {
+        webm::convert_webm_to_mp4(&input, &output).await?;
+        &output
+    } else {
+        &input
+    };
+    bot.send_video(msg.chat.id, teloxide::types::InputFile::file(video))
+        .reply_parameters(ReplyParameters::new(msg.id))
+        .await?;
+    Ok(())
 }
 
-#[instrument]
-async fn process_mp4_urls(bot: &Bot, msg: &Message, url: &str) {
-    match check_url_status_code(url).await {
-        Some(status) if (200..=299).contains(&status) => {
-            let mp4_filename = unique_filename("mp4");
-            bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::UploadVideo)
-                .await
-                .unwrap();
-            download_video(url, &mp4_filename).await;
-            bot.send_video(
-                msg.chat.id,
-                teloxide::types::InputFile::file(std::path::Path::new(&mp4_filename)),
-            )
-            .reply_parameters(ReplyParameters::new(msg.id))
-            .await
-            .unwrap();
-            delete_file(&mp4_filename).await;
-        }
-        _ => {
-            bot.send_message(msg.chat.id, "El video no existe o no está disponible 😭")
-                .reply_parameters(ReplyParameters::new(msg.id))
-                .await
-                .unwrap();
+async fn process_urls(bot: &Bot, msg: &Message, text: &str) -> ProcessingResult {
+    if message_checks::url::is_url(text) {
+        social_media_handler::process(bot, msg, text).await?;
+        if is_webm_url(text) {
+            process_video_url(bot, msg, text, true).await?;
+        } else if is_mp4_url(text) {
+            process_video_url(bot, msg, text, false).await?;
         }
     }
+    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -101,15 +83,7 @@ async fn process_text_messages(
     text: &str,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut actions: Vec<_> = Vec::new();
-    if message_checks::url::is_url(text) {
-        social_media_handler::process(bot, msg, text).await?;
-        if is_webm_url(text) {
-            process_webm_urls(bot, msg, text).await;
-        }
-        if is_mp4_url(text) {
-            process_mp4_urls(bot, msg, text).await;
-        }
-    }
+    process_urls(bot, msg, text).await?;
     if is_prank_day() && should_trigger(PRANK_THRESHOLD) {
         if should_trigger(15) {
             let reversed_message = upside_down_string(text);
@@ -144,7 +118,8 @@ async fn process_text_messages(
         if copypasta.trigger == "viernes" {
             bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::UploadVideo)
                 .await?;
-            bot.send_video(msg.chat.id, fetch_friday_video().unwrap())
+            let video = fetch_friday_video().ok_or("Friday video asset is missing")?;
+            bot.send_video(msg.chat.id, video)
                 .reply_parameters(ReplyParameters::new(msg.id))
                 .await?;
         } else {
@@ -163,12 +138,10 @@ async fn process_text_messages(
     if !actions.is_empty() {
         bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::Typing)
             .await?;
-        tokio::join!(async {
-            for action in actions {
-                action.await.unwrap();
-                sleep(Duration::from_secs(1)).await;
-            }
-        });
+        for action in actions {
+            action.await?;
+            sleep(Duration::from_secs(1)).await;
+        }
     }
     Ok(())
 }
@@ -186,23 +159,32 @@ pub async fn process_files(
         .is_some_and(|name| name.contains("webm"))
         && file_to_read.file.size <= 20_000_000
     {
-        let webm_filename = unique_filename("webm");
-        let mp4_filename = unique_filename("mp4");
+        let _permit = MEDIA_SLOTS.acquire().await?;
+        let dir = tempfile::tempdir()?;
+        let input = dir.path().join("input.webm");
+        let output = dir.path().join("output.mp4");
         bot.send_chat_action(msg.chat.id, teloxide::types::ChatAction::UploadVideo)
-            .await
-            .unwrap();
-        let file = bot.get_file(file_to_read.file.id.clone()).await.unwrap();
-        let mut dst = fs::File::create(&webm_filename).await.unwrap();
-        bot.download_file(&file.path, &mut dst).await.unwrap();
-        webm::convert_webm_to_mp4(&webm_filename, &mp4_filename).await;
-        bot.send_video(
-            msg.chat.id,
-            teloxide::types::InputFile::file(std::path::Path::new(&mp4_filename)),
-        )
-        .reply_parameters(ReplyParameters::new(msg.id))
-        .await?;
-        delete_file(&mp4_filename).await;
-        delete_file(&webm_filename).await;
+            .await?;
+        let file =
+            tokio::time::timeout(DOWNLOAD_TIMEOUT, bot.get_file(file_to_read.file.id.clone()))
+                .await??;
+        tokio::time::timeout(DOWNLOAD_TIMEOUT, async {
+            let mut dst = tokio::fs::File::create(&input).await?;
+            let stream = bot.download_file_stream(&file.path);
+            futures_util::pin_mut!(stream);
+            let mut size = 0u64;
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                size = checked_size(size, chunk.len())?;
+                dst.write_all(&chunk).await?;
+            }
+            Ok::<(), Box<dyn Error + Send + Sync>>(())
+        })
+        .await??;
+        webm::convert_webm_to_mp4(&input, &output).await?;
+        bot.send_video(msg.chat.id, teloxide::types::InputFile::file(&output))
+            .reply_parameters(ReplyParameters::new(msg.id))
+            .await?;
     }
     Ok(())
 }
