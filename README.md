@@ -27,9 +27,9 @@ When `REMINDERS_CHAT_ID` is set, the bot sends special-date messages at midnight
 
 ## Voice transcription
 
-Set `VOSK_MODEL_PATH=/opt/vosk-model-small-es-0.42` to enable transcription in the production image, which includes the Spanish model. The bot starts one Python worker on the first voice message; it loads the model once and processes one recording at a time. At most four jobs can be active or queued. Voice messages are limited to 120 seconds and 20 MB. A timed-out or failed worker is restarted for subsequent jobs. Stop the old transcriber before enabling this feature in the same group to avoid duplicate replies.
+Set `VOSK_MODEL_PATH=/opt/vosk-model` to enable transcription in the production image. The image build asks Vosk for its default small Spanish model; CI refreshes it on each build, so the selected model can change and builds require access to Vosk's model servers. The bot starts one Python worker on the first voice message; it loads the model once and processes one recording at a time. At most four jobs can be active or queued. Voice messages are limited to 120 seconds and 20 MB. A timed-out or failed worker is restarted for subsequent jobs. Stop the old transcriber before enabling this feature in the same group to avoid duplicate replies.
 
-For local development, install FFmpeg and Python 3.12, run `cd transcriber && uv sync`, and set `TRANSCRIBER_PYTHON` to the absolute path of `transcriber/.venv/bin/python` and `VOSK_MODEL_PATH` to an extracted `vosk-model-small-es-0.42` directory. Run the bot from the repository root. `TRANSCRIBER_WORKER` optionally overrides the worker script path.
+For local development, install FFmpeg and Python 3.12, run `cd transcriber && uv sync`, and set `TRANSCRIBER_PYTHON` to the absolute path of `transcriber/.venv/bin/python` and `VOSK_MODEL_PATH` to an extracted Spanish Vosk model directory. Run the bot from the repository root. `TRANSCRIBER_WORKER` optionally overrides the worker script path.
 
 ## Development
 

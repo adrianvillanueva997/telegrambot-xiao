@@ -42,10 +42,11 @@ jobs:
           tags: telegrambot-xiao:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache-filters: model
       - name: Smoke-test container runtime
         run: |
           docker run --rm --entrypoint ffmpeg telegrambot-xiao:ci -version
-          docker run --rm -i --entrypoint /app/transcriber/.venv/bin/python -e VOSK_MODEL_PATH=/opt/vosk-model-small-es-0.42 telegrambot-xiao:ci /app/transcriber/worker.py </dev/null | grep -F '"ready": true'
+          docker run --rm -i --entrypoint /app/transcriber/.venv/bin/python -e VOSK_MODEL_PATH=/opt/vosk-model telegrambot-xiao:ci /app/transcriber/worker.py </dev/null | grep -F '"ready": true'
           if output=$(docker run --rm telegrambot-xiao:ci 2>&1); then
             echo 'Bot unexpectedly started without configuration' >&2
             exit 1
