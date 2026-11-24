@@ -11,7 +11,7 @@ use teloxide::{
     utils::command::BotCommands,
 };
 use utils::usernames::Username;
-use weather::openweather::get_weather;
+use weather::openweather::{WeatherError, get_weather};
 
 /// Convert timestamp to formatted time string
 fn format_time(timestamp: i64) -> String {
@@ -247,7 +247,7 @@ pub async fn commands(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()
         }
 
         Command::Weather { location } => {
-            if location.is_empty() {
+            if location.trim().is_empty() {
                 bot.send_message(
                     msg.chat.id,
                     "🌍 <b>Weather Check!</b>\n\nUsage: <code>/weather [location]</code>\n\nExample: <code>/weather Toledo</code>",
@@ -255,18 +255,23 @@ pub async fn commands(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()
                 .parse_mode(ParseMode::Html)
                 .await?
             } else {
-                let weather = get_weather(&location).await;
-                if weather.name.is_empty() {
-                    bot.send_message(msg.chat.id, "❌ No sé dónde está eso, colega. Revisa la ortografía.")
-                        .reply_parameters(ReplyParameters::new(msg.id))
-                        .await?
-                } else {
-                let sunrise = format_time(weather.sys.sunrise);
-                let sunset = format_time(weather.sys.sunset);
-                let wind_direction = get_wind_direction(weather.wind.deg);
-                let visibility_str = format_visibility(weather.visibility);
-                let message = format!(
-                    r"🌍 <b>{}, {}</b>
+                match get_weather(&location).await {
+                    Err(error) => {
+                        let message = match error {
+                            WeatherError::NotFound => "❌ No sé dónde está eso, colega. Revisa la ortografía.",
+                            WeatherError::Unavailable => "❌ El servicio del tiempo no está disponible ahora. Inténtalo más tarde.",
+                        };
+                        bot.send_message(msg.chat.id, message)
+                            .reply_parameters(ReplyParameters::new(msg.id))
+                            .await?
+                    }
+                    Ok(weather) => {
+                        let sunrise = format_time(weather.sys.sunrise);
+                        let sunset = format_time(weather.sys.sunset);
+                        let wind_direction = get_wind_direction(weather.wind.deg);
+                        let visibility_str = format_visibility(weather.visibility);
+                        let message = format!(
+                            r"🌍 <b>{}, {}</b>
 📍 Coordinates: {:.2}°, {:.2}°
 
 🌡️ <b>Temperature</b>
@@ -286,16 +291,16 @@ pub async fn commands(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()
 
 🌅 <b>Sun Times</b>
 • Sunrise: {} | Sunset: {}",
-                        weather.name,
-                        weather.sys.country,
+                        teloxide::utils::html::escape(&weather.name),
+                        teloxide::utils::html::escape(&weather.sys.country),
                         weather.coord.lon,
                         weather.coord.lat,
                         weather.main.temp,
                         weather.main.feels_like,
                         weather.main.temp_max,
                         weather.main.temp_min,
-                        weather.weather[0].main,
-                        weather.weather[0].description,
+                        weather.weather.first().map_or("N/A".to_string(), |condition| teloxide::utils::html::escape(&condition.main)),
+                        weather.weather.first().map_or("N/A".to_string(), |condition| teloxide::utils::html::escape(&condition.description)),
                         weather.clouds.all,
                         weather.wind.speed,
                         wind_direction,
@@ -310,6 +315,7 @@ pub async fn commands(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()
                         .parse_mode(ParseMode::Html)
                         .reply_parameters(ReplyParameters::new(msg.id))
                         .await?
+                    }
                 }
             }
         }

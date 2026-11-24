@@ -30,5 +30,15 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          tags: telegrambot-xiao:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Smoke-test container runtime
+        run: |
+          docker run --rm --entrypoint ffmpeg telegrambot-xiao:ci -version
+          if output=$(docker run --rm telegrambot-xiao:ci 2>&1); then
+            echo 'Bot unexpectedly started without configuration' >&2
+            exit 1
+          fi
+          echo "$output" | grep -F 'Cannot get the TELOXIDE_TOKEN env variable'
