@@ -145,8 +145,11 @@ impl Transcriber {
                     .await?
                 }
                 .await;
-                if result.is_err() {
-                    worker = None;
+                if (result.is_err() || receiver.is_empty())
+                    && let Some(mut stopped) = worker.take()
+                    && let Err(err) = stopped.child.kill().await
+                {
+                    warn!(%err, "could not stop transcription worker");
                 }
                 let _ = job
                     .response
@@ -280,6 +283,85 @@ async fn download(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stops_when_queue_drains_and_restarts_for_next_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("worker.py");
+        std::fs::write(
+            &script,
+            r"import json, os, sys, time
+from pathlib import Path
+with Path(__file__).with_suffix('.starts').open('a') as f:
+ f.write(str(os.getpid()) + '\n')
+print(json.dumps({'ready': True}), flush=True)
+for line in sys.stdin:
+ r = json.loads(line)
+ time.sleep(0.2)
+ print(json.dumps({'id': r['id'], 'text': 'ok'}), flush=True)
+",
+        )
+        .unwrap();
+        let transcriber = Transcriber::start_with(
+            "python3".into(),
+            script.to_str().unwrap().into(),
+            Duration::from_secs(5),
+        );
+        let mut results = Vec::new();
+        for _ in 0..2 {
+            let (response, result) = oneshot::channel();
+            let (progress, _) = watch::channel(String::new());
+            let permit = Arc::clone(&transcriber.slots)
+                .acquire_owned()
+                .await
+                .unwrap();
+            transcriber
+                .sender
+                .send(Job {
+                    dir: tempfile::tempdir().unwrap(),
+                    response,
+                    progress,
+                    _permit: permit,
+                })
+                .await
+                .unwrap();
+            results.push(result);
+        }
+        for result in results {
+            assert_eq!(result.await.unwrap().unwrap(), "ok");
+        }
+        let starts = script.with_extension("starts");
+        let first = std::fs::read_to_string(&starts).unwrap();
+        assert_eq!(first.lines().count(), 1);
+        let pid = first.trim();
+        assert!(
+            !Command::new("kill")
+                .args(["-0", pid])
+                .stderr(Stdio::null())
+                .status()
+                .await
+                .unwrap()
+                .success()
+        );
+        let (response, result) = oneshot::channel();
+        let (progress, _) = watch::channel(String::new());
+        let permit = Arc::clone(&transcriber.slots)
+            .acquire_owned()
+            .await
+            .unwrap();
+        transcriber
+            .sender
+            .send(Job {
+                dir: tempfile::tempdir().unwrap(),
+                response,
+                progress,
+                _permit: permit,
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.await.unwrap().unwrap(), "ok");
+        assert_eq!(std::fs::read_to_string(starts).unwrap().lines().count(), 2);
+    }
 
     #[tokio::test]
     async fn restarts_worker_after_timeout() {
