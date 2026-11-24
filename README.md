@@ -11,6 +11,7 @@ Install Rust and FFmpeg, and configure the new bot in Telegram. Set:
 - `openweather_key`: OpenWeather API key for `/weather`.
 - `RUST_LOG` (optional): tracing filter, default `info`.
 - `REMINDERS_CHAT_ID` (optional): numeric Telegram group ID. Leave unset to disable reminders.
+- `VOSK_MODEL_PATH` (optional): path to the Spanish Vosk model. Leave unset to disable voice transcription.
 
 ```sh
 cargo run --release
@@ -23,6 +24,12 @@ Media downloads are limited to 20 MB and must use a public HTTP(S) address. Redi
 ## Reminders
 
 When `REMINDERS_CHAT_ID` is set, the bot sends special-date messages at midnight, the Thursday greeting at midnight on Thursdays, and tomorrow's Spanish public holidays at 21:00, all in `Europe/Madrid`. It queries OpenHolidaysAPI and preserves the original reminders bot's plain-text formatting. Stop the old reminders bot before enabling this scheduler to avoid duplicate messages. Jobs are in memory: reminders missed during downtime are not replayed, and running multiple replicas can send duplicates.
+
+## Voice transcription
+
+Set `VOSK_MODEL_PATH=/opt/vosk-model-small-es-0.42` to enable transcription in the production image, which includes the Spanish model. The bot starts one Python worker on the first voice message; it loads the model once and processes one recording at a time. At most four jobs can be active or queued. Voice messages are limited to 120 seconds and 20 MB. A timed-out or failed worker is restarted for subsequent jobs. Stop the old transcriber before enabling this feature in the same group to avoid duplicate replies.
+
+For local development, install FFmpeg and Python 3.12, run `cd transcriber && uv sync`, and set `TRANSCRIBER_PYTHON` to the absolute path of `transcriber/.venv/bin/python` and `VOSK_MODEL_PATH` to an extracted `vosk-model-small-es-0.42` directory. Run the bot from the repository root. `TRANSCRIBER_WORKER` optionally overrides the worker script path.
 
 ## Development
 
@@ -38,4 +45,9 @@ Install the pinned tools with `mise install`, then run `prek install` to enable 
 cargo fmt --check
 cargo clippy --all-targets
 cargo test
+cd transcriber
+uv run ruff format --check .
+uv run ruff check .
+uv run pyrefly check
+uv run python -m unittest
 ```

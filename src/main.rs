@@ -9,6 +9,7 @@ use url::Url;
 
 mod reminders;
 mod telemetry;
+mod transcription;
 
 async fn dispatch<C, CF, M, MF>(text: Option<&str>, username: &str, command: C, message: M)
 where
@@ -51,10 +52,16 @@ async fn main() {
         tokio::spawn(reminders::run(bot.clone(), chat));
     }
 
+    let transcriber = env::var("VOSK_MODEL_PATH")
+        .ok()
+        .filter(|path| !path.is_empty())
+        .map(|_| transcription::Transcriber::start());
+
     teloxide::repl_with_listener(
         bot,
         move |bot: Bot, msg: Message| {
             let username = username.clone();
+            let transcriber = transcriber.clone();
             async move {
                 dispatch(
                     msg.text(),
@@ -69,6 +76,11 @@ async fn main() {
                     || async {
                         if let Err(err) = handle_messages(&bot, &msg).await {
                             error!("Error processing message: {err}");
+                        }
+                        if let Some(transcriber) = transcriber
+                            && let Err(err) = transcriber.handle(&bot, &msg).await
+                        {
+                            error!("Error processing voice message: {err}");
                         }
                     },
                 )
