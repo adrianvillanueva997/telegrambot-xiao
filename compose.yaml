@@ -11,6 +11,7 @@ services:
       URL: ${URL:?Set URL}
       openweather_key: ${OPENWEATHER_KEY:?Set OPENWEATHER_KEY}
       RUST_LOG: ${RUST_LOG:-info}
+      REMINDERS_CHAT_ID: ${REMINDERS_CHAT_ID:-}
     labels:
       - traefik.enable=true
       - traefik.docker.network=proxy
