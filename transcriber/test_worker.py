@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Adrian Villanueva
 """Tests for the transcription worker."""
 
+import io
 import json
 import subprocess
 import unittest
@@ -10,13 +11,15 @@ import worker
 
 
 class TranscriptionTest(unittest.TestCase):
-    """Check segmented Vosk results and FFmpeg errors."""
+    """Check streamed Vosk results and FFmpeg errors."""
 
     @patch("worker.KaldiRecognizer")
-    @patch("worker.subprocess.run")
-    def test_joins_results(self, run: MagicMock, recognizer_class: MagicMock) -> None:
+    @patch("worker.subprocess.Popen")
+    def test_joins_results(self, popen: MagicMock, recognizer_class: MagicMock) -> None:
         """Include complete segments and the final segment."""
-        run.return_value.stdout = bytes(5000)
+        process = popen.return_value
+        process.stdout = io.BytesIO(bytes(5000))
+        process.wait.return_value = 0
         recognizer = recognizer_class.return_value
         recognizer.AcceptWaveform.side_effect = [True, False]
         recognizer.Result.return_value = json.dumps({"text": "hola"})
@@ -25,19 +28,40 @@ class TranscriptionTest(unittest.TestCase):
         progress = MagicMock()
         assert worker.transcribe(MagicMock(), "voice.ogg", progress) == "hola\nmundo"  # noqa: S101 - test assertion
         progress.assert_called_once_with("hola")
+        process.stdout.close()
 
-    @patch("worker.subprocess.run")
-    def test_rejects_audio_over_ten_minutes(self, run: MagicMock) -> None:
+    @patch("worker.KaldiRecognizer")
+    @patch("worker.subprocess.Popen")
+    def test_rejects_audio_over_ten_minutes(
+        self,
+        popen: MagicMock,
+        recognizer_class: MagicMock,
+    ) -> None:
         """Reject audio over the duration cap even if metadata was incorrect."""
-        run.return_value.stdout = bytes(600 * 16000 * 2 + 2)
+        process = popen.return_value
+        process.stdout = io.BytesIO(bytes(600 * 16000 * 2 + 2))
+        recognizer_class.return_value.PartialResult.return_value = '{"partial":""}'
+        recognizer_class.return_value.AcceptWaveform.return_value = False
+        process.poll.return_value = None
         with self.assertRaises(ValueError):  # noqa: PT027 - standard-library test suite
             worker.transcribe(MagicMock(), "voice.ogg", MagicMock())
+        process.kill.assert_called_once()
+        process.wait.assert_called_once()
 
-    @patch("worker.subprocess.run")
-    def test_ffmpeg_failure_propagates(self, run: MagicMock) -> None:
+    @patch("worker.KaldiRecognizer")
+    @patch("worker.subprocess.Popen")
+    def test_ffmpeg_failure_propagates(
+        self,
+        popen: MagicMock,
+        recognizer_class: MagicMock,
+    ) -> None:
         """Let the worker report decoding errors to the supervisor."""
-        run.side_effect = subprocess.TimeoutExpired("ffmpeg", 60)
-        with self.assertRaises(subprocess.TimeoutExpired):  # noqa: PT027 - standard-library test suite
+        process = popen.return_value
+        process.stdout = io.BytesIO()
+        process.wait.return_value = 1
+        process.returncode = 1
+        recognizer_class.return_value.FinalResult.return_value = "{}"
+        with self.assertRaises(subprocess.CalledProcessError):  # noqa: PT027 - standard-library test suite
             worker.transcribe(MagicMock(), "voice.ogg", MagicMock())
 
 

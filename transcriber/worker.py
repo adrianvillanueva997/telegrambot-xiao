@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from threading import Timer
 from typing import TYPE_CHECKING
 
 from vosk import KaldiRecognizer, Model, SetLogLevel
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 
 def transcribe(model: Model, path: str, progress: Callable[[str], None]) -> str:
     """Convert a voice file to PCM and transcribe it with the shared model."""
-    audio = subprocess.run(  # noqa: S603 - arguments are passed without a shell
+    process = subprocess.Popen(  # noqa: S603 - arguments are passed without a shell
         [  # noqa: S607 - ffmpeg is installed in the runtime image
             "ffmpeg",
             "-nostdin",
@@ -38,23 +39,41 @@ def transcribe(model: Model, path: str, progress: Callable[[str], None]) -> str:
             "16000",
             "pipe:1",
         ],
-        check=True,
-        capture_output=True,
-        timeout=120,
-    ).stdout
-    if len(audio) > 600 * 16000 * 2:
-        msg = "audio exceeds duration limit"
-        raise ValueError(msg)
-    recognizer = KaldiRecognizer(model, 16000)
-    parts = []
-    for start in range(0, len(audio), 4000):
-        if recognizer.AcceptWaveform(audio[start : start + 4000]):
-            parts.append(json.loads(recognizer.Result()).get("text", ""))
-        if start % 64000 == 0:
-            partial = json.loads(recognizer.PartialResult()).get("partial", "")
-            progress("\n".join(part for part in [*parts, partial] if part))
-    parts.append(json.loads(recognizer.FinalResult()).get("text", ""))
-    return "\n".join(part for part in parts if part)
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    watchdog = Timer(840, process.kill)
+    watchdog.start()
+    try:
+        recognizer = KaldiRecognizer(model, 16000)
+        parts = []
+        total = 0
+        next_progress = 0
+        if process.stdout is None:
+            msg = "FFmpeg stdout unavailable"
+            raise ValueError(msg)
+        while chunk := process.stdout.read(4000):
+            total += len(chunk)
+            if total > 600 * 16000 * 2:
+                msg = "audio exceeds duration limit"
+                raise ValueError(msg)
+            if recognizer.AcceptWaveform(chunk):
+                parts.append(json.loads(recognizer.Result()).get("text", ""))
+            if total >= next_progress:
+                partial = json.loads(recognizer.PartialResult()).get("partial", "")
+                progress("\n".join(part for part in [*parts, partial] if part))
+                next_progress = total + 64000
+        if process.wait() != 0:
+            raise subprocess.CalledProcessError(process.returncode, process.args)
+        parts.append(json.loads(recognizer.FinalResult()).get("text", ""))
+        return "\n".join(part for part in parts if part)
+    finally:
+        watchdog.cancel()
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        if process.stdout is not None:
+            process.stdout.close()
 
 
 def main() -> None:
