@@ -5,10 +5,13 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from vosk import KaldiRecognizer, Model, SetLogLevel
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def transcribe(model: Model, path: str, progress: Callable[[str], None]) -> str:
