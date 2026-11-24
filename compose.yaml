@@ -1,0 +1,30 @@
+name: telegrambot_xiao
+
+services:
+  bot:
+    image: ghcr.io/adrianvillanueva997/telegrambot-xiao:latest
+    restart: unless-stopped
+    networks:
+      - proxy
+    environment:
+      TELOXIDE_TOKEN: ${TELOXIDE_TOKEN:?Set TELOXIDE_TOKEN}
+      URL: ${URL:?Set URL}
+      openweather_key: ${OPENWEATHER_KEY:?Set OPENWEATHER_KEY}
+      RUST_LOG: ${RUST_LOG:-info}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.middlewares.xiao-redirect-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.xiao-redirect-https.redirectscheme.permanent=true
+      - traefik.http.routers.xiao-http.rule=Host(`${BOT_HOST:?Set BOT_HOST}`)
+      - traefik.http.routers.xiao-http.entrypoints=http
+      - traefik.http.routers.xiao-http.middlewares=xiao-redirect-https
+      - traefik.http.routers.xiao-https.rule=Host(`${BOT_HOST:?Set BOT_HOST}`)
+      - traefik.http.routers.xiao-https.entrypoints=https
+      - traefik.http.routers.xiao-https.tls=true
+      - traefik.http.routers.xiao-https.tls.certresolver=letsencrypt
+      - traefik.http.services.xiao.loadbalancer.server.port=8080
+
+networks:
+  proxy:
+    external: true
