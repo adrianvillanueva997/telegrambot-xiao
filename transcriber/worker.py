@@ -5,12 +5,13 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
 
-def transcribe(model: Model, path: str) -> str:
+def transcribe(model: Model, path: str, progress: Callable[[str], None]) -> str:
     """Convert a voice file to PCM and transcribe it with the shared model."""
     audio = subprocess.run(  # noqa: S603 - arguments are passed without a shell
         [  # noqa: S607 - ffmpeg is installed in the runtime image
@@ -25,7 +26,7 @@ def transcribe(model: Model, path: str) -> str:
             "-i",
             path,
             "-t",
-            "121",
+            "601",
             "-f",
             "s16le",
             "-ac",
@@ -36,16 +37,19 @@ def transcribe(model: Model, path: str) -> str:
         ],
         check=True,
         capture_output=True,
-        timeout=60,
+        timeout=120,
     ).stdout
-    if len(audio) > 120 * 16000 * 2:
+    if len(audio) > 600 * 16000 * 2:
         msg = "audio exceeds duration limit"
         raise ValueError(msg)
     recognizer = KaldiRecognizer(model, 16000)
     parts = []
     for start in range(0, len(audio), 4000):
         if recognizer.AcceptWaveform(audio[start : start + 4000]):
-            parts.append(json.loads(recognizer.Result()).get("text", ""))  # noqa: PERF401 - recognition has side effects
+            parts.append(json.loads(recognizer.Result()).get("text", ""))
+        if start % 64000 == 0:
+            partial = json.loads(recognizer.PartialResult()).get("partial", "")
+            progress("\n".join(part for part in [*parts, partial] if part))
     parts.append(json.loads(recognizer.FinalResult()).get("text", ""))
     return "\n".join(part for part in parts if part)
 
@@ -59,7 +63,18 @@ def main() -> None:
     for line in sys.stdin:
         request = json.loads(line)
         try:
-            text = transcribe(model, request["path"])
+
+            def progress(text: str, request_id: int = request["id"]) -> None:
+                sys.stdout.write(
+                    json.dumps(
+                        {"id": request_id, "partial": text},
+                        ensure_ascii=False,
+                    )
+                    + "\n",
+                )
+                sys.stdout.flush()
+
+            text = transcribe(model, request["path"], progress)
             response = {"id": request["id"], "text": text}
         except (OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
             sys.stderr.write(f"transcription failed: {error}\n")

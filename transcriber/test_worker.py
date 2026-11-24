@@ -21,14 +21,24 @@ class TranscriptionTest(unittest.TestCase):
         recognizer.AcceptWaveform.side_effect = [True, False]
         recognizer.Result.return_value = json.dumps({"text": "hola"})
         recognizer.FinalResult.return_value = json.dumps({"text": "mundo"})
-        assert worker.transcribe(MagicMock(), "voice.ogg") == "hola\nmundo"  # noqa: S101 - test assertion
+        recognizer.PartialResult.return_value = json.dumps({"partial": ""})
+        progress = MagicMock()
+        assert worker.transcribe(MagicMock(), "voice.ogg", progress) == "hola\nmundo"  # noqa: S101 - test assertion
+        progress.assert_called_once_with("hola")
+
+    @patch("worker.subprocess.run")
+    def test_rejects_audio_over_ten_minutes(self, run: MagicMock) -> None:
+        """Reject audio over the duration cap even if metadata was incorrect."""
+        run.return_value.stdout = bytes(600 * 16000 * 2 + 2)
+        with self.assertRaises(ValueError):  # noqa: PT027 - standard-library test suite
+            worker.transcribe(MagicMock(), "voice.ogg", MagicMock())
 
     @patch("worker.subprocess.run")
     def test_ffmpeg_failure_propagates(self, run: MagicMock) -> None:
         """Let the worker report decoding errors to the supervisor."""
         run.side_effect = subprocess.TimeoutExpired("ffmpeg", 60)
         with self.assertRaises(subprocess.TimeoutExpired):  # noqa: PT027 - standard-library test suite
-            worker.transcribe(MagicMock(), "voice.ogg")
+            worker.transcribe(MagicMock(), "voice.ogg", MagicMock())
 
 
 if __name__ == "__main__":
