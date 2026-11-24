@@ -19,3 +19,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: python-lint
+        name: Ruff
+        entry: uv run --locked --project transcriber ruff check transcriber
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: python-types
+        name: Pyrefly
+        entry: bash -c 'cd transcriber && uv run --locked pyrefly check'
+        language: system
+        pass_filenames: false
+        always_run: true

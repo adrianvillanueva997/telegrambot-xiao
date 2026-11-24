@@ -12,6 +12,7 @@ services:
       openweather_key: ${OPENWEATHER_KEY:?Set OPENWEATHER_KEY}
       RUST_LOG: ${RUST_LOG:-info}
       REMINDERS_CHAT_ID: ${REMINDERS_CHAT_ID:-}
+      VOSK_MODEL_PATH: ${VOSK_MODEL_PATH:-}
     labels:
       - traefik.enable=true
       - traefik.docker.network=proxy
