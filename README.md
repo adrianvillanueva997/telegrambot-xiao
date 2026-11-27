@@ -23,7 +23,7 @@ Media downloads are limited to 20 MB and must use a public HTTP(S) address. Redi
 
 ## Reminders
 
-When `REMINDERS_CHAT_ID` is set, the bot sends special-date messages at midnight, the Thursday greeting at midnight on Thursdays, and tomorrow's Spanish public holidays at 21:00, all in `Europe/Madrid`. It queries OpenHolidaysAPI and preserves the original reminders bot's plain-text formatting. Stop the old reminders bot before enabling this scheduler to avoid duplicate messages. Jobs are in memory: reminders missed during downtime are not replayed, and running multiple replicas can send duplicates.
+When `REMINDERS_CHAT_ID` is set, the bot sends special-date messages at midnight, the Thursday greeting at midnight on Thursdays, and tomorrow's Spanish public holidays at 21:00, all in `Europe/Madrid`. It queries OpenHolidaysAPI and preserves the original reminders bot's plain-text formatting. Stop the old reminders bot before enabling this scheduler to avoid duplicate messages. Jobs are in memory: reminders missed during downtime are not replayed, and running multiple replicas can send duplicates. `/status` reports feature configuration, not service health. Scheduler startup, sends, and holiday lookup failures are logged; transient holiday lookup failures are retried up to three times. Failed Telegram sends are not retried because delivery can be ambiguous.
 
 ## Voice transcription
 
@@ -37,7 +37,7 @@ Install the pinned tools with `mise install`, then run `prek install` to enable 
 
 ## Production deployment
 
-`compose.yaml` targets the existing Traefik setup, not local development. It uses the published GHCR image and the external `proxy` network. Set `TELOXIDE_TOKEN`, `URL`, `OPENWEATHER_KEY`, and `BOT_HOST` (the hostname of `URL`), then run `docker compose up -d`. The proxy must provide the `http` and `https` entrypoints and the `letsencrypt` certificate resolver. Pushes to `main` publish the amd64 image tagged `latest`; release tags such as `v1.0.0` publish versioned images. CI also builds the image on pull requests.
+`compose.yaml` targets the existing Traefik setup, not local development. It uses the published GHCR image and the external `proxy` network. Set `TELOXIDE_TOKEN`, `URL`, `OPENWEATHER_KEY`, and `BOT_HOST` (the hostname of `URL`), plus `REMINDERS_CHAT_ID` if reminders are wanted, then run `docker compose up -d`. The proxy must provide the `http` and `https` entrypoints and the `letsencrypt` certificate resolver. Pushes to `main` publish the amd64 image tagged `latest`; release tags such as `v1.0.0` publish versioned images. CI also builds the image on pull requests.
 
 ## Checks
 

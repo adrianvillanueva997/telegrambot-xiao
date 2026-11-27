@@ -1,7 +1,7 @@
 mod holidays;
 
 use chrono::{Datelike, NaiveDate, Timelike, Utc, Weekday};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, future::Future, time::Duration};
 use teloxide::{prelude::*, types::ChatId};
 use tracing::{error, info};
 
@@ -26,9 +26,49 @@ fn due(local: chrono::DateTime<chrono_tz::Tz>) -> (bool, bool) {
     )
 }
 
-async fn send(bot: &Bot, chat: ChatId, message: &str) {
-    if let Err(err) = bot.send_message(chat, message).await {
-        error!(%err, "reminder send failed");
+async fn send(bot: &Bot, chat: ChatId, kind: &'static str, message: String) {
+    match bot.send_message(chat, message).await {
+        Ok(_) => info!(kind, "reminder sent"),
+        Err(err) => error!(kind, %err, "reminder send failed"),
+    }
+}
+
+#[derive(Default)]
+struct Schedule {
+    midnight_sent: Option<NaiveDate>,
+    holiday_checked: Option<NaiveDate>,
+}
+
+impl Schedule {
+    async fn tick<S, SF, H, HF>(
+        &mut self,
+        local: chrono::DateTime<chrono_tz::Tz>,
+        events: &HashMap<String, HashMap<String, String>>,
+        send: S,
+        holidays: H,
+    ) where
+        S: Fn(&'static str, String) -> SF,
+        SF: Future<Output = ()>,
+        H: Fn(NaiveDate) -> HF,
+        HF: Future<Output = ()>,
+    {
+        let date = local.date_naive();
+        let (midnight, holiday_time) = due(local);
+        if midnight && self.midnight_sent != Some(date) {
+            self.midnight_sent = Some(date);
+            if local.weekday() == Weekday::Thu {
+                send("thursday", "Feliz jueves! 🐸".to_string()).await;
+            }
+            if let Some(event) = special_event(events, date) {
+                send("special_date", event.to_string()).await;
+            }
+        }
+        if holiday_time && self.holiday_checked != Some(date) {
+            self.holiday_checked = Some(date);
+            if let Some(tomorrow) = date.succ_opt() {
+                holidays(tomorrow).await;
+            }
+        }
     }
 }
 
@@ -44,35 +84,39 @@ pub async fn run(bot: Bot, chat: ChatId) {
             return;
         }
     };
-    let mut midnight_sent = None;
-    let mut holiday_checked = None;
+    let mut schedule = Schedule::default();
     info!(chat_id = chat.0, "reminder scheduler started");
     loop {
         let now = Utc::now();
         let delay = 60 - u64::from(now.second());
         tokio::time::sleep(Duration::from_secs(delay)).await;
         let local = Utc::now().with_timezone(&chrono_tz::Europe::Madrid);
-        let date = local.date_naive();
-        let (midnight, holiday_time) = due(local);
-        if midnight && midnight_sent != Some(date) {
-            midnight_sent = Some(date);
-            if local.weekday() == Weekday::Thu {
-                send(&bot, chat, "Feliz jueves! 🐸").await;
-            }
-            if let Some(event) = special_event(&events, date) {
-                send(&bot, chat, event).await;
-            }
-        }
-        if holiday_time && holiday_checked != Some(date) {
-            holiday_checked = Some(date);
-            if let Some(tomorrow) = date.succ_opt() {
-                match holidays::get(&client, tomorrow).await {
-                    Ok(Some(message)) => send(&bot, chat, &message).await,
-                    Ok(None) => (),
-                    Err(err) => error!(%err, "holiday lookup failed"),
+        schedule.tick(local, &events, |kind, message| send(&bot, chat, kind, message), |tomorrow| {
+            let client = &client;
+            let bot = &bot;
+            async move {
+            for attempt in 1..=3 {
+                match holidays::get(client, tomorrow).await {
+                    Ok(Some(message)) => {
+                        send(bot, chat, "holiday", message).await;
+                        return;
+                    }
+                    Ok(None) => {
+                        info!(date = %tomorrow, "holiday lookup found no reminders");
+                        return;
+                    }
+                    Err(err) if attempt < 3 && (err.is_timeout() || err.is_connect() || err.status().is_some_and(|status| status.is_server_error() || status.as_u16() == 429)) => {
+                        tracing::warn!(date = %tomorrow, attempt, %err, "holiday lookup failed; retrying");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                    Err(err) => {
+                        error!(date = %tomorrow, attempt, %err, "holiday lookup failed");
+                        return;
+                    }
                 }
             }
-        }
+            }
+        }).await;
     }
 }
 
@@ -80,6 +124,39 @@ pub async fn run(bot: Bot, chat: ChatId) {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[tokio::test]
+    async fn scheduler_runs_due_jobs_once_per_day() {
+        use std::cell::RefCell;
+        let mut schedule = Schedule::default();
+        let sent = RefCell::new(Vec::new());
+        let checked = RefCell::new(Vec::new());
+        let events = events();
+        let madrid = chrono_tz::Europe::Madrid;
+        let midnight = madrid.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let evening = madrid.with_ymd_and_hms(2026, 1, 1, 21, 0, 0).unwrap();
+        for time in [midnight, midnight, evening, evening] {
+            schedule
+                .tick(
+                    time,
+                    &events,
+                    |kind, _| {
+                        sent.borrow_mut().push(kind);
+                        async {}
+                    },
+                    |date| {
+                        checked.borrow_mut().push(date);
+                        async {}
+                    },
+                )
+                .await;
+        }
+        assert_eq!(*sent.borrow(), ["thursday", "special_date"]);
+        assert_eq!(
+            *checked.borrow(),
+            [NaiveDate::from_ymd_opt(2026, 1, 2).unwrap()]
+        );
+    }
 
     #[test]
     fn special_events_match_dates_and_preserve_content() {

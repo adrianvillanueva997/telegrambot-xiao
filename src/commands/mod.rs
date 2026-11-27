@@ -48,6 +48,8 @@ fn format_visibility(visibility_meters: i64) -> String {
 pub enum Command {
     #[command(description = "display this text.")]
     Help,
+    #[command(description = "show configured bot features.")]
+    Status,
     #[command(description = "Let's play some dota!")]
     Dota,
     #[command(description = "Let's play some civilization!")]
@@ -86,6 +88,10 @@ mod tests {
             Command::parse("/dota@xiao_bot", "xiao_bot"),
             Ok(Command::Dota)
         ));
+        assert!(matches!(
+            Command::parse("/status", "xiao_bot"),
+            Ok(Command::Status)
+        ));
         assert!(Command::parse("dota", "xiao_bot").is_err());
         assert!(Command::parse("/dota@another_bot", "xiao_bot").is_err());
         assert!(
@@ -111,6 +117,24 @@ pub async fn commands(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()
         Command::Help => {
             bot.send_message(msg.chat.id, Command::descriptions().to_string())
                 .await?
+        }
+        Command::Status => {
+            let enabled = |name| {
+                if std::env::var(name).is_ok_and(|value| !value.is_empty()) {
+                    "configured"
+                } else {
+                    "disabled"
+                }
+            };
+            bot.send_message(
+                msg.chat.id,
+                format!(
+                    "Reminders: {}\nTranscription: {}\nReminder time zone: Europe/Madrid\nConfiguration only; service health is not checked.",
+                    enabled("REMINDERS_CHAT_ID"),
+                    enabled("VOSK_MODEL_PATH")
+                ),
+            )
+            .await?
         }
         Command::Overwatch => {
             bot.send_message(msg.chat.id, format!("🎮 <b>Overwatch </b>\n {} {} {} {} {} ",
