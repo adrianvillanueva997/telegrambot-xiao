@@ -19,14 +19,19 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
-      - name: Check Python worker
-        working-directory: transcriber
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - name: Check Python workspace
         run: |
-          pipx run --spec uv==0.13.8 uv sync --locked
-          pipx run --spec uv==0.13.8 uv run --locked ruff format --check .
-          pipx run --spec uv==0.13.8 uv run --locked ruff check .
-          pipx run --spec uv==0.13.8 uv run --locked pyrefly check
-          pipx run --spec uv==0.13.8 uv run --locked python -m unittest
+          pipx run --spec uv==0.13.8 uv sync --locked --all-packages
+          pipx run --spec uv==0.13.8 uv run --locked --all-packages ruff format --check .
+          pipx run --spec uv==0.13.8 uv run --locked --all-packages ruff check .
+          pipx run --spec uv==0.13.8 uv run --locked --all-packages pyrefly check
+          pipx run --spec uv==0.13.8 uv run --locked --all-packages bandit -c pyproject.toml -r .
+          pipx run --spec uv==0.13.8 uv run --locked --all-packages python -m unittest discover -s transcriber
 
   docker:
     runs-on: ubuntu-latest

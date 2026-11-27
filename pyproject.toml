@@ -1,0 +1,19 @@
+[tool.uv.workspace]
+members = ["transcriber"]
+
+[dependency-groups]
+dev = ["ruff>=0.15", "pyrefly>=0.57", "bandit>=1.9"]
+
+[tool.ruff]
+target-version = "py315"
+src = ["transcriber"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+[tool.pyrefly]
+project-includes = ["transcriber/worker.py", "transcriber/test_worker.py"]
+search-path = ["transcriber"]
+
+[tool.bandit]
+exclude_dirs = [".venv", ".git", "target"]
