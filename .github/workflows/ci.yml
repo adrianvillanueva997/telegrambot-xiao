@@ -24,14 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          version: 0.13.8
       - name: Check Python workspace
         run: |
-          pipx run --spec uv==0.13.8 uv sync --locked --all-packages
-          pipx run --spec uv==0.13.8 uv run --locked --all-packages ruff format --check .
-          pipx run --spec uv==0.13.8 uv run --locked --all-packages ruff check .
-          pipx run --spec uv==0.13.8 uv run --locked --all-packages pyrefly check
-          pipx run --spec uv==0.13.8 uv run --locked --all-packages bandit -c pyproject.toml -r .
-          pipx run --spec uv==0.13.8 uv run --locked --all-packages python -m unittest discover -s transcriber
+          uv sync --locked --all-packages
+          uv run --locked --all-packages ruff format --check .
+          uv run --locked --all-packages ruff check .
+          uv run --locked --all-packages pyrefly check
+          uv run --locked --all-packages bandit -c pyproject.toml -r .
+          uv run --locked --all-packages python -m unittest discover -s transcriber
 
   docker:
     runs-on: ubuntu-latest
