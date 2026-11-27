@@ -37,7 +37,7 @@ Install the pinned tools with `mise install`, then run `prek install` to enable 
 
 ## Production deployment
 
-`compose.yaml` targets the existing Traefik setup, not local development. It uses the published GHCR image and the external `proxy` network. Set `TELOXIDE_TOKEN`, `URL`, `OPENWEATHER_KEY`, and `BOT_HOST` (the hostname of `URL`), plus `REMINDERS_CHAT_ID` if reminders are wanted, then run `docker compose up -d`. The proxy must provide the `http` and `https` entrypoints and the `letsencrypt` certificate resolver. Pushes to `main` publish the amd64 image tagged `latest`; release tags such as `v1.0.0` publish versioned images. CI also builds the image on pull requests.
+`compose.yaml` targets the existing Traefik setup, not local development. It uses the published GHCR image and the external `proxy` network. Set `TELOXIDE_TOKEN`, `URL`, `OPENWEATHER_KEY`, and `BOT_HOST` (the hostname of `URL`), plus `REMINDERS_CHAT_ID` if reminders are wanted, then run `docker compose up -d`. The proxy must provide the `http` and `https` entrypoints and the `letsencrypt` certificate resolver. Pushes to `main` that change application code, image inputs, dependencies, or the publish workflow publish the amd64 image tagged `latest`; release tags such as `v1.0.0` publish versioned images regardless of changed files. CI also builds the image on pull requests.
 
 ## Checks
 
