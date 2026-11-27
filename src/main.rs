@@ -50,6 +50,8 @@ async fn main() {
                 .expect("REMINDERS_CHAT_ID must be a numeric Telegram chat ID"),
         );
         tokio::spawn(reminders::run(bot.clone(), chat));
+    } else {
+        info!("reminder scheduler disabled: REMINDERS_CHAT_ID is not set");
     }
 
     let transcriber = env::var("VOSK_MODEL_PATH")
