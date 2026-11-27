@@ -7,9 +7,10 @@ RUN cargo build --release --locked
 
 FROM python:3.15.1-slim-bookworm AS python-deps
 COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /usr/local/bin/uv
-WORKDIR /app/transcriber
-COPY transcriber/pyproject.toml transcriber/uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY transcriber/pyproject.toml transcriber/pyproject.toml
+RUN UV_PROJECT_ENVIRONMENT=/app/transcriber/.venv uv sync --locked --package xiao-transcriber --no-dev --no-install-project
 
 FROM python-deps AS model
 RUN HOME=/tmp/vosk /app/transcriber/.venv/bin/python -c 'from vosk import Model; Model(lang="es")' \

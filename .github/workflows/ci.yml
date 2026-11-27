@@ -12,26 +12,32 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust
         run: rustup toolchain install 1.100.0 --profile minimal --component clippy,rustfmt && rustup default 1.100.0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
-      - name: Check Python worker
-        working-directory: transcriber
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - name: Check Python workspace
         run: |
-          pipx run --spec uv==0.13.8 uv sync --locked
-          pipx run --spec uv==0.13.8 uv run --locked ruff format --check .
-          pipx run --spec uv==0.13.8 uv run --locked ruff check .
-          pipx run --spec uv==0.13.8 uv run --locked pyrefly check
-          pipx run --spec uv==0.13.8 uv run --locked python -m unittest
+          uv sync --locked --all-packages
+          uv run --locked --all-packages ruff format --check .
+          uv run --locked --all-packages ruff check .
+          uv run --locked --all-packages pyrefly check
+          uv run --locked --all-packages bandit -c pyproject.toml -r .
+          uv run --locked --all-packages python -m unittest discover -s transcriber
 
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
