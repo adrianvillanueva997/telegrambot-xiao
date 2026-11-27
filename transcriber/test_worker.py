@@ -3,7 +3,7 @@
 
 import io
 import json
-import subprocess
+import subprocess  # nosec B404  # used to test ffmpeg failures
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -26,7 +26,7 @@ class TranscriptionTest(unittest.TestCase):
         recognizer.FinalResult.return_value = json.dumps({"text": "mundo"})
         recognizer.PartialResult.return_value = json.dumps({"partial": ""})
         progress = MagicMock()
-        assert worker.transcribe(MagicMock(), "voice.ogg", progress) == "hola\nmundo"  # noqa: S101 - test assertion
+        assert worker.transcribe(MagicMock(), "voice.ogg", progress) == "hola\nmundo"  # nosec B101  # noqa: S101 - test assertion
         progress.assert_called_once_with("hola")
         process.stdout.close()
 

@@ -21,13 +21,13 @@ repos:
         always_run: true
       - id: python-lint
         name: Ruff
-        entry: uv run --locked --project transcriber ruff check transcriber
+        entry: uv run --locked --only-group dev ruff check .
         language: system
         pass_filenames: false
         always_run: true
       - id: python-types
         name: Pyrefly
-        entry: bash -c 'cd transcriber && uv run --locked pyrefly check'
+        entry: uv run --locked --all-packages pyrefly check
         language: system
         pass_filenames: false
         always_run: true

@@ -3,7 +3,7 @@
 
 import json
 import os
-import subprocess
+import subprocess  # nosec B404  # required to run ffmpeg
 import sys
 from pathlib import Path
 from threading import Timer
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 def transcribe(model: Model, path: str, progress: Callable[[str], None]) -> str:
     """Convert a voice file to PCM and transcribe it with the shared model."""
-    process = subprocess.Popen(  # noqa: S603 - arguments are passed without a shell
+    process = subprocess.Popen(  # nosec B603, B607  # noqa: S603 - fixed command without a shell
         [  # noqa: S607 - ffmpeg is installed in the runtime image
             "ffmpeg",
             "-nostdin",
