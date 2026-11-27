@@ -29,7 +29,7 @@ When `REMINDERS_CHAT_ID` is set, the bot sends special-date messages at midnight
 
 Set `VOSK_MODEL_PATH=/opt/vosk-model` to enable transcription in the production image. The image build asks Vosk for its default small Spanish model; CI refreshes it on each build, so the selected model can change and builds require access to Vosk's model servers. The bot starts one Python worker when a voice message arrives; it loads the model and processes one recording at a time. The worker exits when the queue empties to release its memory, so the next job reloads the model. At most four jobs can be active or queued. Voice messages are limited to 10 minutes and 20 MB. The bot shows a typing indicator and updates a reply as recognition progresses. A transcription is allowed up to 15 minutes of processing; a timed-out or failed worker is restarted for subsequent jobs. Stop the old transcriber before enabling this feature in the same group to avoid duplicate replies.
 
-For local development, install FFmpeg and Python 3.15, run `just sync`, and set `TRANSCRIBER_PYTHON` to the absolute path of `.venv/bin/python` and `VOSK_MODEL_PATH` to an extracted Spanish Vosk model directory. Run the bot from the repository root. `TRANSCRIBER_WORKER` optionally overrides the worker script path. Vosk does not provide a macOS ARM wheel, so installing the full workspace requires a supported platform.
+For local development, install FFmpeg and Python 3.15, run `just sync`, and set `TRANSCRIBER_PYTHON` to the absolute path of `.venv/bin/python` and `VOSK_MODEL_PATH` to an extracted Spanish Vosk model directory. Run the bot from the repository root. `TRANSCRIBER_WORKER` optionally overrides the worker script path. macOS uses Vosk 0.3.44 because 0.3.45 does not provide a macOS wheel.
 
 ## Development
 
@@ -47,4 +47,4 @@ just rust-check    # Rust formatting, lint and tests
 just python-check  # Ruff, Pyrefly, Bandit and Python tests
 ```
 
-The full Python checks require Vosk on a supported platform. For Ruff and Bandit alone, `uv sync --locked --only-group dev` installs the shared tools without the runtime dependency.
+For Ruff and Bandit alone, `uv sync --locked --only-group dev` installs the shared tools without the runtime dependency.
