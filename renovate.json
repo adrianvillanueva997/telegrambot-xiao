@@ -2,9 +2,6 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "timezone": "Europe/Madrid",
-  "schedule": ["* 0-4 * * 1"],
-  "prConcurrentLimit": 3,
-  "prHourlyLimit": 1,
   "vulnerabilityAlerts": {
     "enabled": true
   },
