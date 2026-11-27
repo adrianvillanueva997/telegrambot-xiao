@@ -5,8 +5,8 @@ COPY src ./src
 COPY assets ./assets
 RUN cargo build --release --locked
 
-FROM python:3.15.1-slim-bookworm AS python-deps
-COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /usr/local/bin/uv
+FROM python:3.15.2-slim-bookworm AS python-deps
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY transcriber/pyproject.toml transcriber/pyproject.toml
@@ -16,7 +16,7 @@ FROM python-deps AS model
 RUN HOME=/tmp/vosk /app/transcriber/.venv/bin/python -c 'from vosk import Model; Model(lang="es")' \
     && mv /tmp/vosk/.cache/vosk/vosk-model* /opt/vosk-model
 
-FROM python:3.15.1-slim-bookworm
+FROM python:3.15.2-slim-bookworm
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates ffmpeg libssl3 \
     && rm -rf /var/lib/apt/lists/* \
