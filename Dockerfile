@@ -6,7 +6,7 @@ COPY assets ./assets
 RUN cargo build --release --locked
 
 FROM python:3.15.1-slim-bookworm AS python-deps
-COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY transcriber/pyproject.toml transcriber/pyproject.toml
