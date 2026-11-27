@@ -1,7 +1,7 @@
 default:
     @just --list
 
-# Install workspace dependencies (Vosk requires a supported platform).
+# Install workspace dependencies.
 sync:
     uv sync --locked --all-packages
 
