@@ -1,5 +1,5 @@
 [tools]
-rust = "1.100.0"
+rust = "1.100.1"
 prek = "0.5.12"
 uv = "0.13.10"
 just = "latest"
